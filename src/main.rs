@@ -1,6 +1,7 @@
 extern crate image;
 use image::GenericImageView;
 use image::imageops::FilterType;
+use image::error::ImageError;
 
 #[macro_use]
 extern crate clap;
@@ -9,11 +10,11 @@ use clap::App;
 use std::fmt;
 use std::str::FromStr;
 use std::num::ParseIntError;
-
 use std::fs;
-
 use std::path::PathBuf;
 
+
+// TODO: better error handling and hint
 
 #[derive(Debug)]
 enum ParseDimensionError {
@@ -47,6 +48,11 @@ impl FromStr for Dimension {
     }
 }
 
+#[derive(Debug)]
+enum ResizeError {
+    Image(ImageError)
+}
+
 fn main() {
     // parse command line
     let yaml = load_yaml!("cli.yaml");
@@ -60,20 +66,34 @@ fn main() {
         if resize_matches.is_present("folder") {
             // resize all files in folder, output here specifies a folder
             let files: Vec<PathBuf> = read_folder(resize_matches.value_of("INPUT").unwrap());
+            // keeps track of failed files
+            let mut failures: Vec<String> = Vec::new();
             for f in files {
                 if resize_matches.is_present("output") {
                     // output is present, save in specified folder
                     let mut output = PathBuf::from(resize_matches.value_of("output").unwrap());
                     output.push(f.file_name().unwrap());
-                    resize_image(f.to_str().unwrap(), &dimen, Some(output.to_str().unwrap()));
+                    // resize and record failure cases
+                    match resize_image(f.to_str().unwrap(), &dimen, Some(output.to_str().unwrap())) {
+                        Ok(_) => (),
+                        Err(_) => failures.push(String::from(f.to_str().unwrap())),
+                    };
                 } else {
                     // output is not present, replace file
-                    resize_image(f.to_str().unwrap(), &dimen, resize_matches.value_of("output"));
+                    match resize_image(f.to_str().unwrap(), &dimen, resize_matches.value_of("output")) {
+                        Ok(_) => (),
+                        Err(_) => failures.push(String::from(f.to_str().unwrap())),
+                    };
                 }
+            }
+            // list failures
+            println!("[{}] Failed Cases:", {failures.len()});
+            for failed in failures {
+                println!("{}", failed);
             }
         } else {
             // resize a specific image, output here specifies a filename
-            resize_image(resize_matches.value_of("INPUT").unwrap(), &dimen, resize_matches.value_of("output"));
+            resize_image(resize_matches.value_of("INPUT").unwrap(), &dimen, resize_matches.value_of("output")).unwrap();
         }
     } else {
         // no arguments provided, terminate
@@ -90,15 +110,28 @@ fn read_folder(basepath: &str) -> Vec<PathBuf> {
 }
 
 // resize a image given path
-fn resize_image(path: &str, d: &Dimension, outpath: Option<&str>) {
+fn resize_image(path: &str, d: &Dimension, outpath: Option<&str>) -> Result<(), ResizeError> {
     println!("Resizing image... {}", path);
     // read image
-    let img = image::open(path).unwrap();
+    let img = match image::open(path) {
+        Ok(val) => val,
+        Err(err) => {
+            println!("Failed to open image...");
+            return Err(ResizeError::Image(err));
+        },
+    };
     // check necessity of resizing
     if img.height() == d.height && img.width() == d.width {
         // size already satisfied, exit
         println!("Image is already of size {}", d);
-        return;
+        if let Some(out) = outpath {
+            // output is provided, save as specified
+            img.save(out).unwrap();
+        } else {
+            // output not provided, replace original file
+            img.save(path).unwrap();
+        }
+        return Ok(());
     }
     // resizing
     let resized = img.resize_exact(d.width, d.height, FilterType::Nearest);
@@ -110,4 +143,5 @@ fn resize_image(path: &str, d: &Dimension, outpath: Option<&str>) {
         // output not provided, replace original file
         resized.save(path).unwrap();
     }
+    Ok(())
 }
