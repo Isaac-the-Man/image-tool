@@ -11,7 +11,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::num::ParseIntError;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 
 // TODO: better error handling and hint
@@ -64,6 +64,11 @@ fn main() {
         let dimen = Dimension::from_str(resize_matches.value_of("dimension").unwrap()).unwrap();
         // check folder tag
         if resize_matches.is_present("folder") {
+            // check if INPUT is folder
+            if !Path::new(resize_matches.value_of("INPUT").unwrap()).is_dir() {
+                // not a folder, terminating...
+                return println!("'{}' is not a folder. Remove flag '-f' to parse a file.", resize_matches.value_of("INPUT").unwrap());
+            }
             // resize all files in folder, output here specifies a folder
             let files: Vec<PathBuf> = read_folder(resize_matches.value_of("INPUT").unwrap());
             // keeps track of failed files
@@ -92,8 +97,14 @@ fn main() {
                 println!("{}", failed);
             }
         } else {
-            // resize a specific image, output here specifies a filename
-            resize_image(resize_matches.value_of("INPUT").unwrap(), &dimen, resize_matches.value_of("output")).unwrap();
+            // check if input is file
+            if !Path::new(resize_matches.value_of("INPUT").unwrap()).is_file() {
+                // not file, terminating...
+                println!("'{}' is not a file. Use flag '-f' to parse a folder.", resize_matches.value_of("INPUT").unwrap());
+            } else {
+                // resize a specific image, output here specifies a filename
+                resize_image(resize_matches.value_of("INPUT").unwrap(), &dimen, resize_matches.value_of("output")).unwrap();
+            }
         }
     } else {
         // no arguments provided, terminate
