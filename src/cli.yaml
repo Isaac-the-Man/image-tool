@@ -1,29 +1,53 @@
-name: Image Parser
+name: Image Tool
 version: "0.1.0"
 author: Isaac-the-Man <steven97102@gmail.com>
 about: A flexible image manipulation command line tool
 subcommands:
-  - resize:
-      about: "Resize image(s), can be a file or a folder."
-      version: "0.1.0"
-      author: Isaac-the-Man <steven97102@gmail.com>
-      args:
-        - INPUT:
-            help: Specify the path of the file/folder to perform the operation
-            required: true
-            index: 1
-        - dimension:
-            help: Specify the output dimension of the file in the form "SIZExSIZE" (eg. "64x64")
-            required: true
-            short: d
-            long: dimension
-            takes_value: true
-        - output:
-            help: Specify the output file name and path
-            short: o
-            long: output
-            takes_value: true
-        - folder:
-            help: Perform resize for all images in a folder
-            short: f
-            long: folder
+    - resize:
+        about: "Resize image(s), can be a file or a folder."
+        version: "0.1.0"
+        author: Isaac-the-Man <steven97102@gmail.com>
+        args:
+            - INPUT:
+                help: Specify the path of the file/folder to perform the operation
+                required: true
+                index: 1
+            - dimension:
+                help: Specify the output dimension of the file in the form "SIZExSIZE" (eg. "64x64")
+                required: true
+                short: d
+                long: dimension
+                takes_value: true
+            - output:
+                help: Specify the output file name and path
+                short: o
+                long: output
+                takes_value: true
+            - folder:
+                help: Perform resize for all images in a folder
+                short: f
+                long: folder
+    - convert:
+        about: "Convert image(s) to a certain format, works with a file or a folder."
+        version: "0.1.0"
+        author: Isaac-the-Man <steven97102@gmail.com>
+        args:
+            - INPUT:
+                help: Specify the path of the file/folder to perform the operation
+                required: true
+                index: 1
+            - format:
+                help: Specify the output format (eg. "PNG"). Supported format are PNG, JPEG
+                required: true
+                short: F
+                long: dimension
+                takes_value: true
+            - output:
+                help: Specify the output file name and path
+                short: o
+                long: output
+                takes_value: true
+            - folder:
+                help: Perform resize for all images in a folder
+                short: f
+                long: folder

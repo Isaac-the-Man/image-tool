@@ -194,7 +194,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "image-parser"
+name = "image-tool"
 version = "0.1.0"
 dependencies = [
  "clap",
