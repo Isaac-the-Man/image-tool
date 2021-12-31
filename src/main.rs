@@ -17,9 +17,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::convert::AsRef;
 
-// TODO: convert
-// TODO: AsRef
-
+// TODO: rewrite resize as AsRef
 
 #[derive(Debug)]
 enum ParseDimensionError {
@@ -117,10 +115,10 @@ fn main() {
             // read files in the folder (shallow read)
             let files: Vec<PathBuf> = read_folder(resize_matches.value_of("INPUT").unwrap());
             // keeps track of failed files
-            let mut failures: Vec<String> = Vec::new();
+            let mut failures: Vec<PathBuf> = Vec::new();
 
             // resize all files in folder, output here specifies a folder
-            for f in files {
+            for f in &files {
                 // default output to input (replace)
                 let mut output = f.clone();
                 // check if output is present (copy to new folder) or replace originals
@@ -130,22 +128,22 @@ fn main() {
                     output.push(f.file_name().unwrap());
                 }
                 // resize and save
-                match resize_image(f.to_str().unwrap(), &args.dimension, Some(output.to_str().unwrap())) {
+                match resize_image(f, &args.dimension, Some(&output)) {
                     Ok(_) => {
-                        println!("[PASS] resized '{}'", f.to_str().unwrap());
+                        println!("[PASS] resized '{}'", f.display());
                     },
                     Err(err) => {
                         match err {
                             ResizeError::ReadImage(_) => {
-                                println!("[FAIL] failed to read '{}'", f.to_str().unwrap());
-                                failures.push(String::from(f.to_str().unwrap()));
+                                println!("[FAIL] failed to read '{}'", f.display());
+                                failures.push(f.to_owned());
                             },
                             ResizeError::CriteriaMet => {
-                                println!("[WARN] size already satisfied for '{}'", f.to_str().unwrap());
+                                println!("[WARN] size already satisfied for '{}'", f.display());
                             },
                             ResizeError::SaveImage(_) => {
-                                println!("[FAIL] failed to save '{}'", f.to_str().unwrap());
-                                failures.push(String::from(f.to_str().unwrap()));
+                                println!("[FAIL] failed to save '{}'", f.display());
+                                failures.push(f.to_owned());
                             },
                         }
                     },
@@ -154,9 +152,7 @@ fn main() {
 
             // list failures
             println!("{} FAILED CASES:", failures.len());
-            for failed in failures {
-                println!("{}", failed);
-            }
+            failures.into_iter().for_each(|x| println!("{}", x.display()));
 
         } else {
             // check if input is file
@@ -165,8 +161,7 @@ fn main() {
                 println!("'{}' is not a file. Use flag '-f' to parse a folder.", args.input.display());
             } else {
                 // resize a specific image, output here specifies a filename
-                resize_image(args.input.to_str().unwrap(), &args.dimension,
-                    args.output.map(|x| String::from(x.to_str().unwrap())).as_deref()).unwrap();
+                resize_image(args.input, &args.dimension, args.output).unwrap();
             }
         }
 
@@ -194,7 +189,7 @@ fn main() {
             // read files in the folder (shallow read)
             let files: Vec<PathBuf> = read_folder(con_matches.value_of("INPUT").unwrap());
             // keeps track of failed files
-            let mut failures: Vec<String> = Vec::new();
+            let mut failures: Vec<PathBuf> = Vec::new();
 
             // resize all files in folder, output here specifies a folder
             for f in &files {
@@ -212,30 +207,30 @@ fn main() {
                     output.set_extension(con_matches.value_of("format").unwrap());
                 }
                 // resize and save
-                match convert_image(f.clone(), args.format, output) {
+                match convert_image(f, args.format, &output) {
                     Ok(_) => {
                         println!("[PASS] converted '{}'", f.to_str().unwrap());
                     },
                     Err(err) => {
                         match err {
                             ConvertError::ReadImage(_) => {
-                                println!("[FAIL] failed to read '{}'", f.to_str().unwrap());
-                                failures.push(String::from(f.to_str().unwrap()));
+                                println!("[FAIL] failed to read '{}'", f.display());
+                                failures.push(f.to_owned());
                             },
                             ConvertError::CriteriaMet => {
-                                println!("[WARN] format already satisfied '{}'", f.to_str().unwrap());
+                                println!("[WARN] format already satisfied '{}'", f.display());
                             },
                             ConvertError::Convert => {
-                                println!("[FAIL] failed to convert '{}'", f.to_str().unwrap());
-                                failures.push(String::from(f.to_str().unwrap()));
+                                println!("[FAIL] failed to convert '{}'", f.display());
+                                failures.push(f.to_owned());
                             },
                             ConvertError::SaveImage(_) => {
-                                println!("[FAIL] failed to save '{}'", f.to_str().unwrap());
-                                failures.push(String::from(f.to_str().unwrap()));
+                                println!("[FAIL] failed to save '{}'", f.display());
+                                failures.push(f.to_owned());
                             },
                             ConvertError::ParseFormat(_) => {
-                                println!("[FAIL] Failed to parse format of '{}'", f.to_str().unwrap());
-                                failures.push(String::from(f.to_str().unwrap()));
+                                println!("[FAIL] Failed to parse format of '{}'", f.display());
+                                failures.push(f.to_owned());
                             },
                         }
                     },
@@ -244,9 +239,7 @@ fn main() {
 
             // list failures
             println!("{} FAILED CASES:", failures.len());
-            for failed in failures {
-                println!("{}", failed);
-            }
+            failures.into_iter().for_each(|x| println!("{}", x.display()));
 
             // ask to replace originals
             if args.output.is_none() {
@@ -254,7 +247,6 @@ fn main() {
                     delete_files(&files);
                 }
             }
-
         } else {
             // check if input is file
             if !args.input.is_file() {
@@ -288,17 +280,17 @@ fn main() {
 }
 
 // get array of files give folder path
-fn read_folder(basepath: &str) -> Vec<PathBuf> {
-    let paths = fs::read_dir(basepath).unwrap();
+fn read_folder<T: AsRef<str>>(basepath: T) -> Vec<PathBuf> {
+    let paths = fs::read_dir(basepath.as_ref()).unwrap();
     paths.into_iter().map(|p| p.unwrap().path())
         .filter(|p| p.is_file())
         .collect()
 }
 
 // resize a image given path. See enum ResizeError for related errors
-fn resize_image(path: &str, d: &Dimension, outpath: Option<&str>) -> Result<(), ResizeError> {
+fn resize_image<T: AsRef<Path>>(path: T, d: &Dimension, outpath: Option<T>) -> Result<(), ResizeError> {
     // read image
-    let img = match image::open(path) {
+    let img = match image::open(path.as_ref()) {
         Ok(val) => val,
         Err(err) => {
             return Err(ResizeError::ReadImage(err));
@@ -309,7 +301,7 @@ fn resize_image(path: &str, d: &Dimension, outpath: Option<&str>) -> Result<(), 
         // size already satisfied, copy (if output is provided) then exit
         if let Some(out) = outpath {
             // output is provided, save as specified
-            match img.save(out) {
+            match img.save(out.as_ref()) {
                 Ok(_) => (),
                 Err(err) => {return Err(ResizeError::SaveImage(err));}
             };
@@ -327,7 +319,7 @@ fn resize_image(path: &str, d: &Dimension, outpath: Option<&str>) -> Result<(), 
         }
     } else {
         // output not provided, replace original file
-        match resized.save(path) {
+        match resized.save(path.as_ref()) {
             Ok(_) => Ok(()),
             Err(err) => Err(ResizeError::SaveImage(err)),
         }
