@@ -51,3 +51,7 @@ subcommands:
                 help: Perform resize for all images in a folder
                 short: f
                 long: folder
+            - yes:
+                help: Agrees to all following prompts (eg. delete original files)
+                short: y
+                long: yes

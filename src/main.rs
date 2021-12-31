@@ -8,6 +8,8 @@ use image::ImageFormat;
 extern crate clap;
 use clap::App;
 
+use text_io::read;
+
 use std::fmt;
 use std::str::FromStr;
 use std::num::ParseIntError;
@@ -84,6 +86,7 @@ struct ConvertArguments {
     output: Option<PathBuf>,
     format: ImageFormat,
     folder: bool,
+    yes: bool,
 }
 
 fn main() {
@@ -176,6 +179,7 @@ fn main() {
             output: con_matches.value_of("output").map(|x| PathBuf::from(x)),
             format: ImageFormat::from_extension(con_matches.value_of("format").unwrap()).unwrap(),
             folder: con_matches.is_present("folder"),
+            yes: con_matches.is_present("yes"),
         };
 
         // check folder tag
@@ -193,7 +197,7 @@ fn main() {
             let mut failures: Vec<String> = Vec::new();
 
             // resize all files in folder, output here specifies a folder
-            for f in files {
+            for f in &files {
                 // default output to input (replace)
                 let mut output = f.clone();
                 // check if output is present (copy to new folder) or replace originals
@@ -244,6 +248,13 @@ fn main() {
                 println!("{}", failed);
             }
 
+            // ask to replace originals
+            if args.output.is_none() {
+                if args.yes || ask_to_remove_files() {
+                    delete_files(&files);
+                }
+            }
+
         } else {
             // check if input is file
             if !args.input.is_file() {
@@ -260,7 +271,13 @@ fn main() {
                     output = temp_output.clone();
                 }
                 // resize and save
-                convert_image(args.input, args.format, output).unwrap();
+                convert_image(&args.input, args.format, &output).unwrap();
+                // ask to replace originals
+                if args.output.is_none() {
+                    if args.yes || ask_to_remove_files() {
+                        delete_files(&vec![&args.input]);
+                    }
+                }
             }
         }
 
@@ -317,6 +334,33 @@ fn resize_image(path: &str, d: &Dimension, outpath: Option<&str>) -> Result<(), 
     }
 }
 
+
+// ask to remove original files
+fn ask_to_remove_files() -> bool {
+    loop {
+        println!("Do you wished to remove the original files (y/n)?");
+        let res: String = read!("{}\n");
+        if res.trim().eq("y") || res.trim().eq("n") {
+            return res.trim().eq("y");
+        }
+    }
+}
+
+// remove files
+fn delete_files<T: AsRef<Path>>(files: &[T]) {
+    // removing files
+    for f in files {
+        match fs::remove_file(f.as_ref()) {
+            Ok(_) => {
+                println!("[PASS] deleted '{}'", f.as_ref().display());
+            },
+            Err(_) => {
+                println!("[FAIL] failed to delete '{}'", f.as_ref().display());
+            },
+        }
+    }
+}
+
 // convert image to another format
 fn convert_image<T: AsRef<Path>>(path: T, format: ImageFormat, outpath: T) -> Result<(), ConvertError> {
     // check necessity of converting by checking file extension
@@ -335,7 +379,6 @@ fn convert_image<T: AsRef<Path>>(path: T, format: ImageFormat, outpath: T) -> Re
             return Err(ConvertError::ReadImage(err));
         },
     };
-    println!("{}", outpath.as_ref().display());
     // convert and save
     match img.save_with_format(outpath, format) {
         Ok(_) => Ok(()),
