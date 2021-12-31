@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::convert::AsRef;
 
 // TODO: convert
+// TODO: AsRef
 
 
 #[derive(Debug)]
@@ -68,6 +69,7 @@ enum ConvertError {
     CriteriaMet,
     Convert,    // error while converting
     SaveImage(ImageError),
+    ParseFormat(ParseFormatError),
 }
 
 struct ResizeArguments {
@@ -178,7 +180,70 @@ fn main() {
 
         // check folder tag
         if args.folder {
-            unimplemented!()
+            
+            // check if INPUT is folder
+            if !args.input.is_dir() {
+                // not a folder, terminating...
+                return println!("'{}' is not a folder. Remove flag '-f' to parse a file.", args.input.display());
+            }
+
+            // read files in the folder (shallow read)
+            let files: Vec<PathBuf> = read_folder(con_matches.value_of("INPUT").unwrap());
+            // keeps track of failed files
+            let mut failures: Vec<String> = Vec::new();
+
+            // resize all files in folder, output here specifies a folder
+            for f in files {
+                // default output to input (replace)
+                let mut output = f.clone();
+                // check if output is present (copy to new folder) or replace originals
+                if let Some(ref temp_output) = args.output {
+                    // output is present, save in specified folder
+                    output = temp_output.clone();
+                    // construct target path with specified format
+                    let mut f_clone = f.clone();
+                    f_clone.set_extension(con_matches.value_of("format").unwrap());
+                    output.push(f_clone.file_name().unwrap());
+                } else {
+                    output.set_extension(con_matches.value_of("format").unwrap());
+                }
+                // resize and save
+                match convert_image(f.clone(), args.format, output) {
+                    Ok(_) => {
+                        println!("[PASS] converted '{}'", f.to_str().unwrap());
+                    },
+                    Err(err) => {
+                        match err {
+                            ConvertError::ReadImage(_) => {
+                                println!("[FAIL] failed to read '{}'", f.to_str().unwrap());
+                                failures.push(String::from(f.to_str().unwrap()));
+                            },
+                            ConvertError::CriteriaMet => {
+                                println!("[WARN] format already satisfied '{}'", f.to_str().unwrap());
+                            },
+                            ConvertError::Convert => {
+                                println!("[FAIL] failed to convert '{}'", f.to_str().unwrap());
+                                failures.push(String::from(f.to_str().unwrap()));
+                            },
+                            ConvertError::SaveImage(_) => {
+                                println!("[FAIL] failed to save '{}'", f.to_str().unwrap());
+                                failures.push(String::from(f.to_str().unwrap()));
+                            },
+                            ConvertError::ParseFormat(_) => {
+                                println!("[FAIL] Failed to parse format of '{}'", f.to_str().unwrap());
+                                failures.push(String::from(f.to_str().unwrap()));
+                            },
+                        }
+                    },
+                };
+            }
+
+            // list failures
+            println!("{} FAILED CASES:", failures.len());
+            for failed in failures {
+                println!("{}", failed);
+            }
+
         } else {
             // check if input is file
             if !args.input.is_file() {
@@ -186,7 +251,16 @@ fn main() {
                 println!("'{}' is not a file. Use flag '-f' to parse a folder.", args.input.display());
             } else {
                 // resize a specific image, output here specifies a filename
-                convert_image(args.input, args.format, args.output).unwrap();
+                // default output to input (replace)
+                let mut output = args.input.clone();
+                output.set_extension(con_matches.value_of("format").unwrap());
+                // check if output is present (copy to new folder) or replace originals
+                if let Some(ref temp_output) = args.output {
+                    // output is present, save in specified folder
+                    output = temp_output.clone();
+                }
+                // resize and save
+                convert_image(args.input, args.format, output).unwrap();
             }
         }
 
@@ -244,10 +318,14 @@ fn resize_image(path: &str, d: &Dimension, outpath: Option<&str>) -> Result<(), 
 }
 
 // convert image to another format
-fn convert_image<T: AsRef<Path>>(path: T, format: ImageFormat, outpath: Option<T>) -> Result<(), ConvertError> {
+fn convert_image<T: AsRef<Path>>(path: T, format: ImageFormat, outpath: T) -> Result<(), ConvertError> {
     // check necessity of converting by checking file extension
-    if format.extensions_str().contains(&path.as_ref().extension().unwrap().to_str().unwrap()) {
-        // same format, terminate
+    let input_format = match ImageFormat::from_path(path.as_ref()) {
+        Ok(f) => f,
+        Err(_) => {return Err(ConvertError::ParseFormat(ParseFormatError::UnknownFormat));}
+    };
+    if input_format == format {
+        // same format as specified, don't convert
         return Err(ConvertError::CriteriaMet);
     }
     // read image
@@ -257,27 +335,19 @@ fn convert_image<T: AsRef<Path>>(path: T, format: ImageFormat, outpath: Option<T
             return Err(ConvertError::ReadImage(err));
         },
     };
-    // check if output is provided, convert and save
-    if let Some(out) = outpath {
-        // output is provided, save as specified
-        match img.save_with_format(out.as_ref(), format) {
-            Ok(_) => Ok(()),
-            Err(err) => Err(ConvertError::SaveImage(err)),
-        }
-    } else {
-        // output not provided, replace original file
-        match img.save_with_format(path, format) {
-            Ok(_) => Ok(()),
-            Err(err) => {
-                match err {
-                    ImageError::Encoding(_) => Err(ConvertError::Convert),
-                    ImageError::Decoding(_) => Err(ConvertError::SaveImage(err)),
-                    ImageError::Parameter(_) => Err(ConvertError::SaveImage(err)),
-                    ImageError::Limits(_) => Err(ConvertError::SaveImage(err)),
-                    ImageError::Unsupported(_) => Err(ConvertError::SaveImage(err)),
-                    ImageError::IoError(_) => Err(ConvertError::SaveImage(err)),
-                }
-            },
-        }
+    println!("{}", outpath.as_ref().display());
+    // convert and save
+    match img.save_with_format(outpath, format) {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            match err {
+                ImageError::Encoding(_) => Err(ConvertError::Convert),
+                ImageError::Decoding(_) => Err(ConvertError::SaveImage(err)),
+                ImageError::Parameter(_) => Err(ConvertError::SaveImage(err)),
+                ImageError::Limits(_) => Err(ConvertError::SaveImage(err)),
+                ImageError::Unsupported(_) => Err(ConvertError::SaveImage(err)),
+                ImageError::IoError(_) => Err(ConvertError::SaveImage(err)),
+            }
+        },
     }
 }

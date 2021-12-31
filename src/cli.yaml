@@ -40,7 +40,7 @@ subcommands:
                 help: Specify the output format (eg. "PNG"). Supported format are PNG, JPEG
                 required: true
                 short: F
-                long: dimension
+                long: format
                 takes_value: true
             - output:
                 help: Specify the output file name and path
