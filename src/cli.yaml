@@ -27,6 +27,10 @@ subcommands:
                 help: Perform resize for all images in a folder
                 short: f
                 long: folder
+            - guess:
+                help: Guess file format based on the first few bytes
+                short: g
+                long: guess
     - convert:
         about: "Convert image(s) to a certain format, works with a file or a folder."
         version: "0.1.0"
