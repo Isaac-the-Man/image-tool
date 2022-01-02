@@ -59,3 +59,7 @@ subcommands:
                 help: Agrees to all following prompts (eg. delete original files)
                 short: y
                 long: yes
+            - guess:
+                help: Guess file format based on the first few bytes
+                short: g
+                long: guess
