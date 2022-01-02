@@ -3,6 +3,7 @@ use image::GenericImageView;
 use image::imageops::FilterType;
 use image::error::ImageError;
 use image::ImageFormat;
+use image::io::Reader;
 
 #[macro_use]
 extern crate clap;
@@ -17,7 +18,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::convert::AsRef;
 
-// TODO: rewrite resize as AsRef
 
 #[derive(Debug)]
 enum ParseDimensionError {
@@ -52,13 +52,9 @@ impl FromStr for Dimension {
 }
 
 #[derive(Debug)]
-enum ParseFormatError {
-    UnknownFormat,
-}
-
-#[derive(Debug)]
 enum ResizeError {
     ReadImage(ImageError),  // failed to open image
+    GuessFormat,    // error while guessing format
     CriteriaMet,    // dimension alread satisfied
     SaveImage(ImageError),  // failed to save image
 }
@@ -66,10 +62,10 @@ enum ResizeError {
 #[derive(Debug)]
 enum ConvertError {
     ReadImage(ImageError),
+    GuessFormat,    // error while guessing format
     CriteriaMet,
     Convert,    // error while converting
     SaveImage(ImageError),
-    ParseFormat(ParseFormatError),
 }
 
 struct ResizeArguments {
@@ -77,6 +73,7 @@ struct ResizeArguments {
     output: Option<PathBuf>,
     dimension: Dimension,
     folder: bool,
+    guess: bool,
 }
 
 struct ConvertArguments {
@@ -85,6 +82,7 @@ struct ConvertArguments {
     format: ImageFormat,
     folder: bool,
     yes: bool,
+    guess: bool,
 }
 
 fn main() {
@@ -101,6 +99,7 @@ fn main() {
             output: resize_matches.value_of("output").map(|x| PathBuf::from(x)),
             dimension: Dimension::from_str(resize_matches.value_of("dimension").unwrap()).unwrap(),
             folder: resize_matches.is_present("folder"),
+            guess: resize_matches.is_present("guess"),
         };
 
         // check folder tag
@@ -112,6 +111,14 @@ fn main() {
                 return println!("'{}' is not a folder. Remove flag '-f' to parse a file.", args.input.display());
             }
 
+            // check if OUTPUT is folder
+            if let Some(ref output) = args.output {
+                if !output.is_dir() {
+                    // not a folder, terminating...
+                    return println!("'{}' is not a folder.", args.output.unwrap().display());
+                }
+            }
+
             // read files in the folder (shallow read)
             let files: Vec<PathBuf> = read_folder(resize_matches.value_of("INPUT").unwrap());
             // keeps track of failed files
@@ -119,16 +126,17 @@ fn main() {
 
             // resize all files in folder, output here specifies a folder
             for f in &files {
-                // default output to input (replace)
-                let mut output = f.clone();
-                // check if output is present (copy to new folder) or replace originals
-                if let Some(ref temp_output) = args.output {
-                    // output is present, save in specified folder
-                    output = temp_output.clone();
-                    output.push(f.file_name().unwrap());
+
+                // only save when output is specified or when file is modified.
+                let mut output: Option<PathBuf> = None;
+                if let Some(ref temp_out) = args.output {
+                    let mut temp = PathBuf::from(temp_out);
+                    temp.push(f.file_name().unwrap());
+                    output = Some(temp);
                 }
+
                 // resize and save
-                match resize_image(f, &args.dimension, Some(&output)) {
+                match resize_image(f, &args.dimension, output.as_ref(), args.guess) {
                     Ok(_) => {
                         println!("[PASS] resized '{}'", f.display());
                     },
@@ -136,6 +144,10 @@ fn main() {
                         match err {
                             ResizeError::ReadImage(_) => {
                                 println!("[FAIL] failed to read '{}'", f.display());
+                                failures.push(f.to_owned());
+                            },
+                            ResizeError::GuessFormat => {
+                                println!("[FAIL] failed to guess format '{}'", f.display());
                                 failures.push(f.to_owned());
                             },
                             ResizeError::CriteriaMet => {
@@ -161,7 +173,7 @@ fn main() {
                 println!("'{}' is not a file. Use flag '-f' to parse a folder.", args.input.display());
             } else {
                 // resize a specific image, output here specifies a filename
-                resize_image(args.input, &args.dimension, args.output).unwrap();
+                resize_image(&args.input, &args.dimension, args.output.as_ref(), args.guess).unwrap();
             }
         }
 
@@ -175,6 +187,7 @@ fn main() {
             format: ImageFormat::from_extension(con_matches.value_of("format").unwrap()).unwrap(),
             folder: con_matches.is_present("folder"),
             yes: con_matches.is_present("yes"),
+            guess: con_matches.is_present("guess"),
         };
 
         // check folder tag
@@ -207,7 +220,7 @@ fn main() {
                     output.set_extension(con_matches.value_of("format").unwrap());
                 }
                 // resize and save
-                match convert_image(f, args.format, &output) {
+                match convert_image(f, args.format, &output, args.guess) {
                     Ok(_) => {
                         println!("[PASS] converted '{}'", f.to_str().unwrap());
                     },
@@ -228,8 +241,8 @@ fn main() {
                                 println!("[FAIL] failed to save '{}'", f.display());
                                 failures.push(f.to_owned());
                             },
-                            ConvertError::ParseFormat(_) => {
-                                println!("[FAIL] Failed to parse format of '{}'", f.display());
+                            ConvertError::GuessFormat => {
+                                println!("[FAIL] failed to guess format '{}'", f.display());
                                 failures.push(f.to_owned());
                             },
                         }
@@ -263,7 +276,7 @@ fn main() {
                     output = temp_output.clone();
                 }
                 // resize and save
-                convert_image(&args.input, args.format, &output).unwrap();
+                convert_image(&args.input, args.format, &output, args.guess).unwrap();
                 // ask to replace originals
                 if args.output.is_none() {
                     if args.yes || ask_to_remove_files() {
@@ -288,9 +301,22 @@ fn read_folder<T: AsRef<str>>(basepath: T) -> Vec<PathBuf> {
 }
 
 // resize a image given path. See enum ResizeError for related errors
-fn resize_image<T: AsRef<Path>>(path: T, d: &Dimension, outpath: Option<T>) -> Result<(), ResizeError> {
+fn resize_image<T: AsRef<Path>>(path: &T, d: &Dimension, outpath: Option<&T>, guess: bool) -> Result<(), ResizeError> {
     // read image
-    let img = match image::open(path.as_ref()) {
+    let mut img_temp = Reader::open(path.as_ref()).ok().unwrap();
+    // guess format if flagged
+    if guess {
+        match img_temp.with_guessed_format() {
+            Ok(val) => {
+                img_temp = val;
+            },
+            Err(_) => {
+                return Err(ResizeError::GuessFormat);
+            },
+        }
+    }
+    // decode image
+    let img = match img_temp.decode() {
         Ok(val) => val,
         Err(err) => {
             return Err(ResizeError::ReadImage(err));
@@ -354,18 +380,28 @@ fn delete_files<T: AsRef<Path>>(files: &[T]) {
 }
 
 // convert image to another format
-fn convert_image<T: AsRef<Path>>(path: T, format: ImageFormat, outpath: T) -> Result<(), ConvertError> {
-    // check necessity of converting by checking file extension
-    let input_format = match ImageFormat::from_path(path.as_ref()) {
-        Ok(f) => f,
-        Err(_) => {return Err(ConvertError::ParseFormat(ParseFormatError::UnknownFormat));}
-    };
-    if input_format == format {
-        // same format as specified, don't convert
-        return Err(ConvertError::CriteriaMet);
-    }
+fn convert_image<T: AsRef<Path>>(path: T, format: ImageFormat, outpath: T, guess: bool) -> Result<(), ConvertError> {
     // read image
-    let img = match image::open(path.as_ref()) {
+    let mut img_temp = Reader::open(path.as_ref()).ok().unwrap();
+    // guess format if flagged
+    if guess {
+        match img_temp.with_guessed_format() {
+            Ok(val) => {
+                img_temp = val;
+            },
+            Err(_) => {
+                return Err(ConvertError::GuessFormat);
+            },
+        }
+    } else {
+        // check necessity of converting by checking file extension
+        if img_temp.format().unwrap() == format {
+            // same format as specified, don't convert
+            return Err(ConvertError::CriteriaMet);
+        }
+    }
+    // decode image
+    let img = match img_temp.decode() {
         Ok(val) => val,
         Err(err) => {
             return Err(ConvertError::ReadImage(err));
