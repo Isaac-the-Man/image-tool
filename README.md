@@ -1,6 +1,13 @@
 # image-tool
 A simple mass image manipulation commandline tool for resizing and converting format. This tool is specifically designed to for performing conversion on large amount of images with different formats efficienctly.
 
+## installation
+Install binary from crates.io:
+```
+cargo install image-tool
+```
+Then add `~/.cargo/bin/` to `PATH` to run it anywhere.
+
 ## Usage
 Currently there are two subcommands: `resize` and `convert`
 - `resize`: resize image(s), can be a file or a folder
@@ -71,3 +78,6 @@ cd image-tool/
 cargo build --release
 ```
 Next to be able to use the tool anywhere on your machine, add `target/release/` to `PATH`.
+
+## credit
+This binary is essentially just a wrapper for the rust libary `image`.

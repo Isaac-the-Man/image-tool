@@ -1,7 +1,15 @@
 [package]
 name = "image-tool"
 version = "0.1.0"
+authors = ["Isaac-the-Man <steven97102@gmail.com>"]
 edition = "2021"
+description = "A simple mass image manipulation commandline tool for resizing and converting format. This tool is specifically designed to for performing conversion on large amount of images with different formats efficienctly."
+readme = "README.md"
+repository = "https://github.com/Isaac-the-Man/image-tool"
+license = "MIT"
+license-file = "LICENSE"
+keywords = ["image", "conversion", "resize", "jpeg", "png"]
+categories = ["command-line-utilities", "filesystem", "multimedia::images"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
