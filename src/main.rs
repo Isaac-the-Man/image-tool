@@ -93,7 +93,7 @@ fn main() {
     // RESIZE subcommand
     if let Some(resize_matches) = matches.subcommand_matches("resize") {
 
-        // parse arguments and flags
+        // parse arguments and flags    
         let args = ResizeArguments {
             input: PathBuf::from(resize_matches.value_of("INPUT").unwrap()),
             output: resize_matches.value_of("output").map(|x| PathBuf::from(x)),
@@ -203,7 +203,8 @@ fn main() {
             let files: Vec<PathBuf> = read_folder(con_matches.value_of("INPUT").unwrap());
             // keeps track of failed files
             let mut failures: Vec<PathBuf> = Vec::new();
-
+            // keeps track of succesfully processed file (for later deletion)
+            let mut success: Vec<PathBuf> = Vec::new();
             // resize all files in folder, output here specifies a folder
             for f in &files {
                 // default output to input (replace)
@@ -223,6 +224,7 @@ fn main() {
                 match convert_image(f, args.format, &output, args.guess) {
                     Ok(_) => {
                         println!("[PASS] converted '{}'", f.to_str().unwrap());
+                        success.push(f.to_owned());
                     },
                     Err(err) => {
                         match err {
@@ -257,7 +259,7 @@ fn main() {
             // ask to replace originals
             if args.output.is_none() {
                 if args.yes || ask_to_remove_files() {
-                    delete_files(&files);
+                    delete_files(&success);
                 }
             }
         } else {
@@ -395,7 +397,7 @@ fn convert_image<T: AsRef<Path>>(path: T, format: ImageFormat, outpath: T, guess
         }
     } else {
         // check necessity of converting by checking file extension
-        if img_temp.format().unwrap() == format {
+        if img_temp.format().is_some() && img_temp.format().unwrap() == format {
             // same format as specified, don't convert
             return Err(ConvertError::CriteriaMet);
         }
