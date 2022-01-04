@@ -173,7 +173,23 @@ fn main() {
                 println!("'{}' is not a file. Use flag '-f' to parse a folder.", args.input.display());
             } else {
                 // resize a specific image, output here specifies a filename
-                resize_image(&args.input, &args.dimension, args.output.as_ref(), args.guess).unwrap();
+                match resize_image(&args.input, &args.dimension, args.output.as_ref(), args.guess) {
+                    Ok(_) => (),
+                    Err(err) => match err {
+                        ResizeError::ReadImage(_) => {
+                            println!("Failed to read '{}'", args.input.display());
+                        },
+                        ResizeError::GuessFormat => {
+                            println!("Failed to guess format '{}'", args.input.display());
+                        },
+                        ResizeError::CriteriaMet => {
+                            println!("Size already satisfied for '{}'", args.input.display());
+                        },
+                        ResizeError::SaveImage(_) => {
+                            println!("Failed to save '{}'", args.input.display());
+                        },
+                    },
+                }
             }
         }
 
@@ -278,13 +294,33 @@ fn main() {
                     output = temp_output.clone();
                 }
                 // resize and save
-                convert_image(&args.input, args.format, &output, args.guess).unwrap();
-                // ask to replace originals
-                if args.output.is_none() {
-                    if args.yes || ask_to_remove_files() {
-                        delete_files(&vec![&args.input]);
-                    }
-                }
+                match convert_image(&args.input, args.format, &output, args.guess) {
+                    Ok(_) => {
+                        // ask to replace originals
+                        if args.output.is_none() {
+                            if args.yes || ask_to_remove_files() {
+                                delete_files(&vec![&args.input]);
+                            }
+                        }
+                    },
+                    Err(err) => match err {
+                            ConvertError::ReadImage(_) => {
+                                println!("Failed to read '{}'", args.input.display());
+                            },
+                            ConvertError::CriteriaMet => {
+                                println!("Format already satisfied '{}'", args.input.display());
+                            },
+                            ConvertError::Convert => {
+                                println!("Failed to convert '{}'", args.input.display());
+                            },
+                            ConvertError::SaveImage(_) => {
+                                println!("Failed to save '{}'", args.input.display());
+                            },
+                            ConvertError::GuessFormat => {
+                                println!("Failed to guess format '{}'", args.input.display());
+                            },
+                    },
+                };
             }
         }
 
@@ -358,7 +394,7 @@ fn resize_image<T: AsRef<Path>>(path: &T, d: &Dimension, outpath: Option<&T>, gu
 // ask to remove original files
 fn ask_to_remove_files() -> bool {
     loop {
-        println!("Do you wished to remove the original files (y/n)?");
+        println!("Do you wish to remove the original files (y/n)?");
         let res: String = read!("{}\n");
         if res.trim().eq("y") || res.trim().eq("n") {
             return res.trim().eq("y");
@@ -369,16 +405,19 @@ fn ask_to_remove_files() -> bool {
 // remove files
 fn delete_files<T: AsRef<Path>>(files: &[T]) {
     // removing files
+    let mut counter: i32 = 0;
     for f in files {
         match fs::remove_file(f.as_ref()) {
             Ok(_) => {
                 println!("[PASS] deleted '{}'", f.as_ref().display());
+                counter += 1;
             },
             Err(_) => {
                 println!("[FAIL] failed to delete '{}'", f.as_ref().display());
             },
         }
     }
+    println!("{} files deleted in total.", counter);
 }
 
 // convert image to another format

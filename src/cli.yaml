@@ -2,6 +2,8 @@ name: Image Tool
 version: "0.1.0"
 author: Isaac-the-Man <steven97102@gmail.com>
 about: A flexible image manipulation command line tool
+settings:
+    - ArgRequiredElseHelp
 subcommands:
     - resize:
         about: "Resize image(s), can be a file or a folder."
