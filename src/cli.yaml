@@ -1,7 +1,7 @@
 name: Image Tool
 version: "0.1.0"
 author: Isaac-the-Man <steven97102@gmail.com>
-about: A flexible image manipulation command line tool
+about: A simple mass image manipulation commandline tool for resizing and converting format. This tool is specifically designed to for performing conversion on large amount of images with different formats efficienctly.
 settings:
     - ArgRequiredElseHelp
 subcommands:
