@@ -7,7 +7,6 @@ description = "A simple mass image manipulation commandline tool for resizing an
 readme = "README.md"
 repository = "https://github.com/Isaac-the-Man/image-tool"
 license = "MIT"
-license-file = "LICENSE"
 keywords = ["image", "conversion", "resize", "jpeg", "png"]
 categories = ["command-line-utilities", "filesystem", "multimedia::images"]
 
